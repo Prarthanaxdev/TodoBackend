@@ -3,7 +3,8 @@ const express = require('express')
 const app = express()
 const redis = require('redis')
 const bodyParser = require('body-parser');
-const db = require('./firestore')
+const db = require('./firestore');
+const { response } = require('express');
 
 const firestore = db.firestore()
 const PORT = 5000;
@@ -33,25 +34,61 @@ app.post('/addUser', function (req, res) {
 app.post('/setData', function (req, res) {
     let body = req.body
 
+    let name= ''
     firestore.collection("todos").where('userId', '==', body.uid).onSnapshot(function (querySnapshot) {
         querySnapshot.docs.map((doc,i) => {
             let id = doc.id
             let title = doc.data().title
             let uid = doc.data().userId
 
-            let name = 'todo-' + i
+            name = 'todo-' + i
             client.hmset(name, "id", id, "title", title, "uid", uid)
+ 
         })
 
+        // querySnapshot.docs.map((doc)=>{
+        //     firestore.collection("subTodos").where('todoId', '==', doc.id).onSnapshot(function (querySnapshot) {
+        //         querySnapshot.docs.map((doc1,i)=>{
+        //             let todoId = doc1.data().todoId
+        //             let subTodoId = doc1.id
+        //             let subTodo = doc1.data().todo
+        //             let name = 'Subtodo-' + i
+
+        //             client.hmset(name, "id", todoId, "subTodo", subTodo, "subTodoId", subTodoId)
+        //         })
+        //     })
+        // })
+
         querySnapshot.docs.map((doc)=>{
+            let j =0
             firestore.collection("subTodos").where('todoId', '==', doc.id).onSnapshot(function (querySnapshot) {
                 querySnapshot.docs.map((doc1,i)=>{
                     let todoId = doc1.data().todoId
                     let subTodoId = doc1.id
                     let subTodo = doc1.data().todo
-                    let name = 'Subtodo-' + i
 
-                    client.hmset(name, "id", todoId, "subTodo", subTodo, "subTodoId", subTodoId)
+                    client.keys("*", function (err, keys) {
+                        if (err) {
+                            return callback(err);
+                        }
+
+                        for (var i = 0, len = keys.length; i < len; i++) {
+                            let name=keys[i]
+                            client.hgetall(keys[i], function (err, object) {
+                                
+                                if(object.id == todoId){
+                                    let obj ={
+                                        subTodoId : doc1.id,
+                                        subTodo : doc1.data().todo, 
+                                    }
+
+                                    client.hmset(name,'totalSub',j,"subtodo"+j,JSON.stringify(obj),redis.print)
+                                    j++;
+                                    console.log("HERE", j)
+                                }
+                            });                            
+                        }
+                    });
                 })
             })
         })
@@ -78,20 +115,36 @@ app.post('/setSubtodo', function (req, res) {
 
 app.get('/getData/:id', function (req, res) {
     var arr = []
-
     client.keys("*", function (err, keys) {
         if (err) {
             return callback(err);
         }
 
+        let j =0
         for (var i = 0, len = keys.length; i < len; i++) {
-            if (keys[i].split("-")[0] == "todo") {
-                client.hgetall(keys[i], function (err, object) {
-                    if(object.deleted !='true'){
-                        arr.push(object)
+           
+            client.hgetall(keys[i], function (err, object) {
+                if(object.deleted !='true'){
+                    var arr2= []
+
+                    if(object.totalSub){
+                        let n = object.totalSub
+    
+                        for(let i =0; i <= n; i++){
+                            let name= "subtodo"+i
+                            arr2.push(JSON.parse(object[name]))
+                        }
                     }
-                });
-            }
+
+                    let obj={
+                        id : object.id,
+                        title : object.title,
+                        subtodos : arr2
+                    }
+                    
+                    arr.push(obj)
+                }
+            });
         }
 
         setTimeout(() => {
@@ -100,28 +153,38 @@ app.get('/getData/:id', function (req, res) {
     });
 })
 
-app.get('/getSubtodos/:id', function (req, res) {
-    var arr = []
+// app.get('/getSubtodos/:id', function (req, res) {
+//     var arr = []
 
-    client.keys("*", function (err, keys) {
-        if (err) {
-            return callback(err);
-        }
+//     client.keys("*", function (err, keys) {
+//         if (err) {
+//             return callback(err);
+//         }
 
-        for (var i = 0, len = keys.length; i < len; i++) {
-            if (keys[i].split("-")[0] == "Subtodo") {
-                client.hgetall(keys[i], function (err, object) {
-                    if (object.id == req.params.id) {
-                        arr.push(object)
-                    }
-                });
-            }
-        }
-        setTimeout(() => {
-            res.send(arr)
-        }, 1000);
-    });
-})
+//         for (var i = 0, len = keys.length; i < len; i++) {
+//             // if (keys[i].split("-")[0] == "Subtodo") {
+//             client.hgetall(keys[i], function (err, object) {
+//                 if(object.totalSub){
+
+//                     let n = object.totalSub
+
+//                     for(let i =0; i <= n; i++){
+//                         console.log("HHHH", i)
+//                         let name= "subtodo"+i
+//                         arr.push(JSON.parse(object[name]))
+
+//                         console.log("YES HERE",object[name])
+//                     }
+//                 }
+//             });
+//         }
+//         setTimeout(() => {
+
+//             console.log("GGGGGGGGGG", arr)
+//             // res.send(arr)
+//         }, 1000);
+//     });
+// })
 
 app.post('/addNewTodo', function (req, res) {
     let body = req.body
@@ -146,8 +209,37 @@ app.post('/addNewSubTodo', function (req, res) {
             return callback(err);
         }
 
-        let name = 'Subtodo-' + keys.length
-        client.hmset(name, "subTodo", body.subTodo, "subTodoId", keys.length, "id", body.todoId, redis.print)
+        for (var i = 0, len = keys.length; i < len; i++) {
+            let name=keys[i]
+
+            client.hgetall(keys[i], function (err, object) {
+                console.log("******", object)
+                if(object.id == body.todoId){
+                    if(object.totalSub){
+                        let id = parseInt(object.totalSub)
+                        console.log("*****", id+1) 
+                        let obj ={
+                            subTodoId : id+1,
+                            subTodo : body.subTodo, 
+                            new : "yes"
+                        }
+
+                        let x = id+1
+                        client.hmset(name,'totalSub',x,"subtodo"+x,JSON.stringify(obj),redis.print)
+
+                    }else {
+                        let obj ={
+                            subTodoId : 0,
+                            subTodo : body.subTodo, 
+                            new : "yes"
+                        }
+
+                        client.hmset(name,'totalSub',0,"subtodo"+0,JSON.stringify(obj),redis.print)
+                    
+                    }
+                }
+            });                            
+        }
     });
 
     res.send("DATA SAVED")
@@ -170,7 +262,6 @@ app.post('/deleteTodo', function (req, res) {
                             client.hmset(keys[i], "deleted", "true", redis.print)
                         }else {
                             client.hdel(keys[i], "title", "uid", "id","new")
-                            console.log(" NO HERE", object)
                         }
                     }
                 });
@@ -249,9 +340,7 @@ app.post('/updateSubTodo', function (req, res) {
                 client.hgetall(ob, function (err, object) {
                     console.log(object, body)
                     if (object.subTodoId == body.id) {
-
-                        console.log("&&&&&&&", object)
-                        client.hdel(keys[i], "title")
+                        client.hdel(keys[i], "subTodo")
                         if (object.id.toString().length > 1) {
                             client.hmset(keys[i], "subTodo", body.title, "updated", "yes", redis.print)
                         }
@@ -279,7 +368,6 @@ app.post('/deleteSubTodo', function (req, res) {
             keys.map((ob, i) => {
                 client.hgetall(ob, function (err, object) {
                     if (object.subTodoId == body.id) {
-                        
                         client.hdel(keys[i], "subTodo", "subTodoId", "id", redis.print)
                     }
                 });
@@ -298,37 +386,54 @@ app.post('/removeSession', function (req, res) {
 
         keys.map((ob, i) => {
             client.hgetall(keys[i], function (err, object) {
-                if (keys[i].split("-")[0] == "todo") {
-                    client.hexists(keys[i], 'new', function (err, reply) {
-                        if (reply === 1) {
-                            firestore.collection("todos").add({
-                                title: object.title,
-                                userId: object.uid
-                            })
-                        } else {
-                            console.log('not exists');
-                        }
-                    });
+                client.hexists(keys[i], 'new', function (err, reply) {
+                    if (reply === 1) {
+                        firestore.collection("todos").add({
+                            title: object.title,
+                            userId: object.uid
+                        })
+                        .then(function (docRef) {
+                            
+                            // keys.map((ob, i) => {
+                            //     client.hgetall(keys[i], function (err, obj) {
+                            //         if (keys[i].split("-")[0] == "Subtodo") {
+                            //             // console.log("*TODO**", object)
+                            //             // console.log("*SUBTODO*",obj )
+                            //             if (object.id == obj.id) {
+                            //                 client.hdel(keys[i],"id", redis.print)
+                            //                 client.hmset(keys[i], "id", docRef.id, redis.print)
+                            //                 // console.log("GGGGG", obj.subTodo,"belongs To", object.title)
+                            //             }
+                            //         }
+                            //     });
+                            // })
+                            // }
+                            // client.hmset(keys[i], "new", docRef.id, redis.print)
+                        })
+                    } else {
+                        
+                    }
+                });
 
-                    client.hexists(keys[i], 'updated', function (err, reply) {
-                        if (reply === 1) {
-                            firestore.collection("todos").doc(object.id).update({
-                                title: object.title
-                            });
-                        } else {
-                            console.log('not exists');
-                        }
-                    });
+                client.hexists(keys[i], 'updated', function (err, reply) {
+                    if (reply === 1) {
+                        firestore.collection("todos").doc(object.id).update({
+                            title: object.title
+                        });
+                    } else {
+                        console.log('not exists');
+                    }
+                });
 
-                    client.hexists(keys[i], 'deleted', function (err, reply) {
-                        if (reply === 1) {
+                client.hexists(keys[i], 'deleted', function (err, reply) {
+                    if (reply === 1) {
 
-                            firestore.collection("todos").doc(object.id).delete();
-                        } else {
-                            console.log('not exists');
-                        }
-                    });
-                }
+                        firestore.collection("todos").doc(object.id).delete();
+                    } else {
+                        console.log('not exists');
+                    }
+                });
+               
             })
         })
     });
@@ -340,8 +445,83 @@ app.post('/removeSession', function (req, res) {
         });
     }, 1000)
 
+
+    // setTimeout(()=>{
+    //     client.keys("*", function (err, keys) {
+    //         if (err) {
+    //             return callback(err);
+    //         }
+
+    //         keys.map((ob, i) => {
+    //             client.hgetall(keys[i], function (err, object) {
+    //                 console.log(keys[i])
+    //                 if (keys[i].split("-")[0] == "Subtodo") {
+                    
+    //                         client.hexists(keys[i], 'new', function (err, reply) {
+    //                             if (reply === 1) {
+    //                                 console.log("**HERERRERERRERERRE***", object)
+    //                                 // client.hgetall(keys[i], function (err, ob) {
+    //                                 //     if (keys[i].split("-")[0] == "todo") {
+    //                                 //         client.hexists(keys[i], 'new', function (err, reply) {
+    //                                 //             if (reply === 1) {
+    //                                 //                 console.log("HHHHHHH",ob , object)
+    //                                 //                 // firestore.collection("todos").add({
+    //                                 //                 //     title: object.title,
+    //                                 //                 //     userId: object.uid
+    //                                 //                 // })
+    //                                 //                 // .then(function (docRef) {
+    //                                 //                 //     // console.log("******", docRef.id)
+    //                                 //                 //     client.hmset(keys[i], "new", docRef.id, redis.print)
+    //                                 //                 // })
+    //                                 //             } else {
+    //                                 //                 console.log('not exists');
+    //                                 //             }
+    //                                 //         })
+                
+    //                                 //     }
+                
+    //                                 // })
+    //                                 // firestore.collection("subTodos").add({
+    //                                 //     todo: object.subTodo,
+    //                                 //     todoId: object.id
+    //                                 // })
+                
+    //                             } else {
+    //                                 console.log('not exists');
+    //                             }
+    //                         });  
+                
+    //                     client.hexists(keys[i], 'updated', function (err, reply) {
+    //                         if (reply === 1) {
+    //                             firestore.collection("subTodos").doc(object.subTodoId).update({
+    //                                 todo: object.subTodo
+    //                             });
+                
+    //                         } else {
+    //                             console.log('not exists');
+    //                         }
+    //                     });
+                
+    //                     // client.hexists(keys[i], 'deleted', function (err, reply) {
+    //                     //     if (reply === 1) {
+                
+    //                     //         firestore.collection("todos").doc(object.id).delete();
+    //                     //     } else {
+    //                     //         console.log('not exists');
+    //                     //     }
+    //                     // });
+    //                 }            
+    //             })
+    //         })
+    //     });
+    // },2000)
+
+
+    
+
 })
 
 app.listen(5000, () => {
     console.log(`App listening on port ${PORT}`)
 })
+
