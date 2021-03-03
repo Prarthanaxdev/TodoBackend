@@ -43,7 +43,6 @@ app.post('/setData', function (req, res) {
 
             name = 'todo-' + i
             client.hmset(name, "id", id, "title", title, "uid", uid)
- 
         })
 
         querySnapshot.docs.map((doc)=>{
@@ -65,13 +64,13 @@ app.post('/setData', function (req, res) {
                             let name=keys[i]
 
                             client.hgetall(keys[i], function (err, object) {
-                                
                                 if(object.id == todoId){
                                     let obj ={
                                         subTodoId : doc1.id,
                                         subTodo : doc1.data().todo, 
                                         new : "No",
-                                        deleted : 'No'
+                                        deleted : 'No',
+                                        updated : 'No'
                                     }
 
                                     client.hmset(name,'totalSub',j,"subtodo"+j,JSON.stringify(obj))
@@ -113,7 +112,6 @@ app.get('/getData/:id', function (req, res) {
 
         let j =0
         for (var i = 0, len = keys.length; i < len; i++) {
-           
             client.hgetall(keys[i], function (err, object) {
                 if(object.deleted !='true'){
                     var arr2= []
@@ -142,11 +140,10 @@ app.get('/getData/:id', function (req, res) {
         }
 
         setTimeout(() => {
-            res.send(arr)
+            res.send(arr.sort())
         }, 1000);
     });
 })
-
 
 app.post('/addNewTodo', function (req, res) {
     let body = req.body
@@ -195,7 +192,6 @@ app.post('/addNewSubTodo', function (req, res) {
                         }
 
                         client.hmset(name,'totalSub',0,"subtodo"+0,JSON.stringify(obj))
-                    
                     }
                 }
             });                            
@@ -247,33 +243,16 @@ app.post('/deleteSubTodo', function (req, res) {
                             
                             client.hget(ob, name, function(err, object1){
                                 let parse = JSON.parse(object1)
-
                                 if(parse.subTodoId == body.subTodoId){
-                                    console.log("*****", parse)
                                     let val = object.totalSub-1
-                                    if (parse.subTodoId.toString().length > 1) {
-                                        let obj ={
-                                            subTodoId : body.subTodoId,
-                                            
-                                            deleted : "yes"
-                                        }
-                
-                                        client.hmset(ob,name,JSON.stringify(obj))
-                                    }else {
-                                        let val = object.totalSub-1
-
-                                        console.log("*****", ob)
-                                        // client.hdel(ob, "totalSub", redis.print)
-                                        // client.hmset(ob, "totalSub",val ,redis.print)
-                                        // client.hdel(ob, name,"subTodoId", redis.print)
-                                        // client.hdel(keys[i], "title", "uid", "id","new")
+                                    let obj ={
+                                        subTodoId : body.subTodoId,
+                                        deleted : "yes",
+                                        new: 'No',
+                                        updated: 'No' 
                                     }
-
-                                    // if(parse.)
-                                    // let val = object.totalSub-1
-                                    // client.hdel(ob, "totalSub", redis.print)
-                                    // client.hmset(ob, "totalSub",val ,redis.print)
-                                    // client.hdel(ob, name, redis.print)
+            
+                                    client.hmset(ob,name,JSON.stringify(obj))
                                 }
                             })
                         }
@@ -284,7 +263,6 @@ app.post('/deleteSubTodo', function (req, res) {
     });
     res.send("DELETED")
 })
-
 
 app.post('/updateTodo', function (req, res) {
     let body = req.body
@@ -310,7 +288,6 @@ app.post('/updateTodo', function (req, res) {
             })
         }
     });
-
     res.send("DATA SAVED")
 })
 
@@ -338,7 +315,6 @@ app.post('/updateTodo', function (req, res) {
             })
         }
     });
-
     res.send("DATA SAVED")
 })
 
@@ -353,13 +329,35 @@ app.post('/updateSubTodo', function (req, res) {
         for (var i = 0, len = keys.length; i < len; i++) {
             keys.map((ob, i) => {
                 client.hgetall(ob, function (err, object) {
-                    if (object.subTodoId == body.id) {
-                        client.hdel(keys[i], "subTodo")
-                        if (object.id.toString().length > 1) {
-                            client.hmset(keys[i], "subTodo", body.title, "updated", "yes")
-                        }
-                        else {
-                            client.hmset(keys[i], "subTodo", body.title)
+                    if(object.id == body.todoId){
+                        for(let i =0; i<=object.totalSub;i++){
+                            let name= "subtodo"+i
+                            client.hget(ob, name, function(err, object1){
+                                let parse = JSON.parse(object1)
+
+                                if(parse.subTodoId ==body.id){
+                                    if (parse.subTodoId.toString().length > 1) {
+                                        let obj ={
+                                            subTodo : body.title,
+                                            subTodoId : body.id,
+                                            new : "NO",
+                                            updated : "yes",
+                                            deleted : "NO"
+                                        }
+
+                                        client.hmset(ob,name,JSON.stringify(obj))
+                                    }else {
+                                        let obj ={
+                                            subTodo : body.title,
+                                            subTodoId : body.id,
+                                            new : "yes",
+                                            updated : "No",
+                                            deleted : "NO"
+                                        }
+                                        client.hmset(ob,name,JSON.stringify(obj))
+                                    }
+                                }
+                            })
                         }
                     }
                 });
@@ -372,7 +370,6 @@ app.post('/updateSubTodo', function (req, res) {
 
 
 app.post('/removeSession', function (req, res) {
-
     client.keys("*", function (err, keys) {
         if (err) {
             return callback(err);
@@ -387,17 +384,8 @@ app.post('/removeSession', function (req, res) {
                             userId: object.uid
                         })
                         .then(function (docRef) {
-                                client.hdel(keys[i], "id") 
-                                client.hmset(keys[i], "id",docRef.id) 
-                                // client.hgetall(keys[i], function (err, obj) {
-                                //     if (keys[i].split("-")[0] == "Subtodo") {
-                                //         if (objFect.id == obj.id) {
-                                //             client.hdel(keys[i],"id", redis.print)
-                                //             client.hmset(keys[i], "id", docRef.id, redis.print)
-                                //         }
-                                //     }
-                                // });
-                            // })
+                            client.hdel(keys[i], "id") 
+                            client.hmset(keys[i],"new","No" ,"id",docRef.id) 
                         }) 
                     } 
                 });
@@ -408,7 +396,6 @@ app.post('/removeSession', function (req, res) {
                             title: object.title
                         });
                     } else {
-                        console.log('not exists');
                     }
                 });
 
@@ -417,14 +404,8 @@ app.post('/removeSession', function (req, res) {
 
                         firestore.collection("todos").doc(object.id).delete();
                     } else {
-                        console.log('not exists');
                     }
-                });
-
-
-              
-             
-               
+                });               
             })
         })
     });
@@ -441,9 +422,7 @@ app.post('/removeSession', function (req, res) {
                         let name= "subtodo"+i
     
                         client.hget(ob, name,function(err, object1){    
-                            
                             let parse = JSON.parse(object1)
-
                             if(parse !=null){
                                 if(parse.new == 'yes'){
                                     let val = parse.totalSub-1    
@@ -455,27 +434,30 @@ app.post('/removeSession', function (req, res) {
                                         todoId :object.id
                                     })
                                 }
+                                if(parse.updated == 'yes'){
+                                    firestore.collection("subTodos").doc(parse.subTodoId).update({
+                                        todo: parse.subTodo
+                                    });
+                                }
+
                                 if(parse.deleted =='yes'){
-                                    firestore.collection("subTodos").doc(parse.subTodoId).delete();
+                                    if(parse.subTodoId.toString().length > 1){
+                                        firestore.collection("subTodos").doc(parse.subTodoId).delete();
+                                    }   
                                 }
                             }
                         })   
-                    }
-
-
-                   
+                    }                   
                 })
             })
         });
     },1000)
 
     setTimeout(() => {
-        console.log("HERE")
         client.flushall(function (err, succeeded) {
             console.log("MESSGAE", succeeded);
         });
     }, 2000)
-
 })
 
 app.listen(5000, () => {
