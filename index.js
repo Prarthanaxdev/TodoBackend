@@ -71,7 +71,8 @@ app.post('/setData', function (req, res) {
                                         new: "No",
                                         deleted: 'No',
                                         updated: 'No',
-                                        sub: 0
+                                        sub: 0,
+                                        subsubTodo : []
                                     }
 
                                     client.hmset(name, 'totalSub', j, "subtodo" + j, JSON.stringify(obj))
@@ -129,6 +130,7 @@ app.get('/getData/:id', function (req, res) {
                         }
                     }
 
+
                     let obj = {
                         id: object.id,
                         title: object.title,
@@ -141,7 +143,9 @@ app.get('/getData/:id', function (req, res) {
         }
 
         setTimeout(() => {
-            res.send(arr.sort())
+            console.log("***", arr)
+
+            res.send(arr)
         }, 1000);
     });
 })
@@ -217,26 +221,39 @@ app.post('/addNewSubsubTodo', function (req, res) {
                         for (let i = 0; i <= object.totalSub; i++) {
                             let name = "subtodo" + i
                             client.hget(ob, name, function (err, object1) {
+
                                 let parse = JSON.parse(object1)
                                 if (parse.subTodoId == body.subTodoId) {
+                                    let sub = []
+                                    if(parse.sub != 0){
+                                        console.log("NOTHING INSIDE")
+                                    }else {
+                                        let k = parse.sub + 1
+                                        let subId = "sub"+k
+                                        let subs = {}
+                    
+                                        subs[subId] = {subTodoId : body.subTodoId ,name :body.subTodo}
+                                        let obj = {
+                                            subTodo: parse.subTodo,
+                                            subTodoId: parse.subTodoId,
+                                            new: parse.new,
+                                            updated: parse.updated,
+                                            deleted: parse.deleted,
+                                            sub: parse.sub + 1,
+                                            subsubTodo : subs
+                                        }
 
-                                    let obj = {
-                                        subTodo: parse.subTodo,
-                                        subTodoId: parse.subTodoId,
-                                        new: parse.new,
-                                        updated: parse.updated,
-                                        deleted: parse.deleted,
-                                        sub: parse.sub + 1
+                                        client.hmset(ob,name, JSON.stringify(obj))
                                     }
                                 }
                             })
-
                         }
                     }
                 });
             })
         }
     });
+    res.send("DATA SAVED")
 })
 
 app.post('/deleteTodo', function (req, res) {
@@ -405,7 +422,6 @@ app.post('/updateSubTodo', function (req, res) {
 
     res.send("DATA SAVED")
 })
-
 
 app.post('/removeSession', function (req, res) {
     client.keys("*", function (err, keys) {
