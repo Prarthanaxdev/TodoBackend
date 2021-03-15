@@ -64,6 +64,8 @@ app.post('/setData', function (req, res) {
                             let name = keys[i]
 
                             client.hgetall(keys[i], function (err, object) {
+                                let subTodo = {}
+
                                 if (object.id == todoId) {
                                     let obj = {
                                         subTodoId: doc1.id,
@@ -74,7 +76,7 @@ app.post('/setData', function (req, res) {
                                         sub: 0,
                                         subsubTodo : []
                                     }
-
+                                    
                                     client.hmset(name, 'totalSub', j, "subtodo" + j, JSON.stringify(obj))
                                     j++;
                                 }
@@ -82,6 +84,7 @@ app.post('/setData', function (req, res) {
                         }
                     });
                 })
+
             })
         })
     })
@@ -130,7 +133,6 @@ app.get('/getData/:id', function (req, res) {
                         }
                     }
 
-
                     let obj = {
                         id: object.id,
                         title: object.title,
@@ -143,8 +145,6 @@ app.get('/getData/:id', function (req, res) {
         }
 
         setTimeout(() => {
-            console.log("***", arr)
-
             res.send(arr)
         }, 1000);
     });
@@ -225,14 +225,40 @@ app.post('/addNewSubsubTodo', function (req, res) {
                                 let parse = JSON.parse(object1)
                                 if (parse.subTodoId == body.subTodoId) {
                                     let sub = []
+
                                     if(parse.sub != 0){
-                                        console.log("NOTHING INSIDE")
+
+                                        let k = parse.sub + 1
+                                        let subId = "sub"+k
+
+                                        let subs = {}
+
+                                        for(let i=1;i<k;i++){
+                                            let subsubName = "sub"+i
+                                            let x = parse.subsubTodo
+                                            subs[subsubName] = {subTodoId : x[subsubName].subTodoId ,name : x[subsubName].name,id : x[subsubName].id,"New":x[subsubName].NEW,"DELETED":x[subsubName].DELETED}
+                                        }
+
+                                        subs[subId] = {subTodoId : body.subTodoId ,name :body.subTodo,id : k, "NEW":"YES","DELETED":"NO"}
+                                    
+                                        let obj = {
+                                            subTodo: parse.subTodo,
+                                            subTodoId: parse.subTodoId,
+                                            new: parse.new,
+                                            updated: parse.updated,
+                                            deleted: parse.deleted,
+                                            sub: parse.sub + 1,
+                                            subsubTodo : subs
+                                        }
+
+                                        client.hmset(ob,name, JSON.stringify(obj))
+
                                     }else {
                                         let k = parse.sub + 1
                                         let subId = "sub"+k
                                         let subs = {}
                     
-                                        subs[subId] = {subTodoId : body.subTodoId ,name :body.subTodo}
+                                        subs[subId] = {subTodoId : body.subTodoId ,name :body.subTodo,id : k,"NEW":"YES","DELETED":"NO"}
                                         let obj = {
                                             subTodo: parse.subTodo,
                                             subTodoId: parse.subTodoId,
@@ -272,6 +298,60 @@ app.post('/deleteTodo', function (req, res) {
                             client.hmset(keys[i], "deleted", "true")
                         } else {
                             client.hdel(keys[i], "title", "uid", "id", "new")
+                        }
+                    }
+                });
+            })
+        }
+    });
+    res.send("DELETED")
+})
+
+app.post('/deleteSubsubTodo', function (req, res) {
+    let body = req.body
+
+    client.keys("*", function (err, keys) {
+        if (err) {
+            return callback(err);
+        }
+
+        for (var i = 0, len = keys.length; i < len; i++) {
+            keys.map((ob, i) => {
+                client.hgetall(ob, function (err, object) {
+                    if (object.id == body.todoId) {
+                        for (let i = 0; i <= object.totalSub; i++) {
+                            let name = "subtodo" + i
+                            let subs ={}
+
+                            client.hget(ob, name, function (err, object1) {
+                                let parse = JSON.parse(object1)
+                                if(parse.subTodoId == body.subTodoId){
+                                    if(parse.subsubTodo != []){
+                                        for(let i =1; i<=parse.sub;i++){
+                                            let name="sub"+i
+
+                                            if(parse.subsubTodo[name].id == body.id){
+                                                subs[name] = {subTodoId : parse.subsubTodo[name].subTodoId, name: parse.subsubTodo[name].name,id : parse.subsubTodo[name].id,"DELETED": "YES"}
+
+                                            }else {
+                                                subs[name] = {subTodoId : parse.subsubTodo[name].subTodoId, name: parse.subsubTodo[name].name,id : parse.subsubTodo[name].id,"DELETED":parse.subsubTodo[name].DELETED}
+                                            }
+                                        }
+
+                                        let obj = {
+                                            subTodo: parse.subTodo,
+                                            subTodoId: parse.subTodoId,
+                                            new: parse.new,
+                                            updated: parse.updated,
+                                            deleted: parse.deleted,
+                                            sub: parse.sub,
+                                            subsubTodo : subs
+                                        }
+        
+                                        client.hmset(ob,name, JSON.stringify(obj))
+                                    }
+                                }
+                            })
                         }
                     }
                 });
@@ -423,6 +503,57 @@ app.post('/updateSubTodo', function (req, res) {
     res.send("DATA SAVED")
 })
 
+app.post('/updateSubsubTodo', function (req, res) {
+    let body = req.body
+
+    client.keys("*", function (err, keys) {
+        if (err) {
+            return callback(err);
+        }
+
+        for (var i = 0, len = keys.length; i < len; i++) {
+            keys.map((ob, i) => {
+                client.hgetall(ob, function (err, object) {
+
+                    if (object.id == body.todoId) {
+
+                        for (let i = 0; i <= object.totalSub; i++) {
+                            let name = "subtodo" + i
+                            client.hget(ob, name, function (err, object1) {
+                                let parse = JSON.parse(object1)
+                                let subs = {}
+                                if (parse.subTodoId == body.subTodoId) {
+                                    for(let i =1; i<=parse.sub;i++){
+                                        let name="sub"+i
+
+                                        if(parse.subsubTodo[name].id == body.id){
+                                            subs[name] = {subTodoId : parse.subsubTodo[name].subTodoId, name: body.title,id : parse.subsubTodo[name].id,"DELETED":parse.subsubTodo[name].DELETED}
+                                        }
+                                    }
+
+                                    let obj = {
+                                        subTodo: parse.subTodo,
+                                        subTodoId: parse.subTodoId,
+                                        new: parse.new,
+                                        updated: parse.updated,
+                                        deleted: parse.deleted,
+                                        sub: parse.sub,
+                                        subsubTodo : subs
+                                    }
+    
+                                    client.hmset(ob,name, JSON.stringify(obj))
+                                }
+                            })
+                        }
+                    }
+                });
+            })
+        }
+    });
+
+    res.send("DATA SAVED")
+})
+
 app.post('/removeSession', function (req, res) {
     client.keys("*", function (err, keys) {
         if (err) {
@@ -509,10 +640,70 @@ app.post('/removeSession', function (req, res) {
     }, 1000)
 
     setTimeout(() => {
-        client.flushall(function (err, succeeded) {
-            console.log("MESSGAE", succeeded);
+        client.keys("*", function (err, keys) {
+            if (err) {
+                return callback(err);
+            }
+
+            keys.map((ob, i) => {
+                client.hgetall(keys[i], function (err, object) {
+                    for (let i = 0; i <= object.totalSub; i++) {
+                        let name = "subtodo" + i
+
+                        client.hget(ob, name, function (err, object1) {
+                            let parse = JSON.parse(object1)
+
+                            // if(parse.subsubTodo != []){
+                            //     for(let i = 1; i<=parse.sub;i++){
+                            //         let name = "sub"+i
+
+                            //         if (parse.subsubTodo[name].NEW == 'YES') {
+                            //             console.log("HERRRRRRRRRR")
+                            //             firestore.collection("sub-subTodos").add({
+                            //                 name: parse.subsubTodo[name].name,
+                            //                 todoId: parse.subsubTodo[name].subTodoId
+                            //             })
+                            //         }
+
+                            //     }
+                            // }
+
+                           
+                            // if (parse.new == 'yes') {
+                            //     let val = parse.totalSub - 1
+                            //     client.hdel(ob, "totalSub")
+                            //     client.hmset(ob, "totalSub", val)
+
+                            //     firestore.collection("subTodos").add({
+                            //         todo: parse.subTodo,
+                            //         todoId: object.id
+                            //     })
+                            // }
+
+                            // if (parse.updated == 'yes') {
+                            //     firestore.collection("subTodos").doc(parse.subTodoId).update({
+                            //         todo: parse.subTodo
+                            //     });
+                            // }
+
+                            // if (parse.deleted == 'yes') {
+                            //     if (parse.subTodoId.toString().length > 1) {
+                            //         firestore.collection("subTodos").doc(parse.subTodoId).delete();
+                            //     }
+                            // }
+                            
+                        })
+                    }
+                })
+            })
         });
     }, 2000)
+
+    setTimeout(() => {
+        client.flushall(function (err, succeeded) {
+            console.log("MESSAGE", succeeded);
+        });
+    }, 3000)
 })
 
 app.listen(5000, () => {
