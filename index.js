@@ -40,7 +40,7 @@ app.post('/setData', function (req, res) {
             let uid = doc.data().userId
 
             name = 'todo-' + i
-            client.hmset(name, "id", id, "title", title, "uid", uid)
+            client.hmset(name, "id", id, "name", title, "uid", uid,"subtodos",JSON.stringify([]))
         })
 
         querySnapshot.docs.map((doc) => {
@@ -65,13 +65,13 @@ app.post('/setData', function (req, res) {
                                 let subTodo = {}
                                 if (object.id == todoId) {
                                     let obj = {
-                                        subTodoId: doc1.id,
-                                        subTodo: doc1.data().todo,
+                                        id: doc1.id,
+                                        name: doc1.data().todo,
                                         new: "No",
                                         deleted: 'No',
                                         updated: 'No',
                                         sub: 0,
-                                        subsubTodo: []
+                                        subtodos: []
                                     }
 
                                     client.hmset(name, 'totalSub', j, "subtodo" + j, JSON.stringify(obj))
@@ -116,24 +116,29 @@ app.get('/getData/:id', function (req, res) {
         for (var i = 0, len = keys.length; i < len; i++) {
             client.hgetall(keys[i], function (err, object) {
                 if (object.deleted != 'true') {
+
+                    console.log("&OBJJJECCCTTTTTT&&", object)
+                    console.log("&^^^^^^&&", object.subtodos)
+
+                    // arr.push(object)
                     var arr2 = []
 
-                    if (object.totalSub) {
-                        let n = object.totalSub
+                    // if (object.totalSub) {
+                    //     let n = object.totalSub
 
-                        for (let i = 0; i <= n; i++) {
-                            let name = "subtodo" + i
-                            let val = JSON.parse(object[name])
-                            if (val.deleted != 'yes') {
-                                arr2.push(JSON.parse(object[name]))
-                            }
-                        }
-                    }
+                    //     for (let i = 0; i <= n; i++) {
+                    //         let name = "subtodo" + i
+                    //         let val = JSON.parse(object[name])
+                    //         if (val.deleted != 'yes') {
+                    //             arr2.push(JSON.parse(object[name]))
+                    //         }
+                    //     }
+                    // }
 
                     let obj = {
                         id: object.id,
-                        title: object.title,
-                        subtodos: arr2,
+                        name: object.name,
+                        subtodos: JSON.parse(object.subtodos),
                     }
 
                     arr.push(obj)
@@ -170,34 +175,52 @@ app.post('/addNewSubTodo', function (req, res) {
             return callback(err);
         }
 
-        for (var i = 0, len = keys.length; i < len; i++) {
-            let name = keys[i]
+        // client.flushall(function (err, succeeded) {
+        //     console.log("MESSAGE", succeeded);
+        // });
+        // console.log("HHHHHHH", body.data.length)
 
-            client.hgetall(keys[i], function (err, object) {
-                if (object.id == body.todoId) {
-                    if (object.totalSub) {
-                        let id = parseInt(object.totalSub)
-                        let obj = {
-                            subTodoId: id + 1,
-                            subTodo: body.subTodo,
-                            new: "yes",
-                        }
-
-                        let x = id + 1
-                        client.hmset(name, 'totalSub', x, "subtodo" + x, JSON.stringify(obj))
-
-                    } else {
-                        let obj = {
-                            subTodoId: 0,
-                            subTodo: body.subTodo,
-                            new: "yes"
-                        }
-
-                        client.hmset(name, 'totalSub', 0, "subtodo" + 0, JSON.stringify(obj))
-                    }
-                }
-            });
+        for(let i=0;i<body.data.length;i++){
+            let name = 'todo-' + i
+            
+            console.log("******", body.data[i].subtodos)
+            client.hmset(name, "id",body.data[i].id, "name", body.data[i].name,"subtodos",JSON.stringify(body.data[i].subtodos) )
         }
+
+
+        // let name = 'todo-' + 1
+      
+
+
+        // for (var i = 0, len = keys.length; i < len; i++) {
+        //     let name = keys[i]
+
+        //     client.hgetall(keys[i], function (err, object) {
+        //         if (object.id == body.todoId) {
+        //             if (object.totalSub) {
+        //                 let id = parseInt(object.totalSub)
+        //                 let obj = {
+        //                     subTodoId: id + 1,
+        //                     subTodo: body.subTodo,
+        //                     new: "yes",
+        //                     subtodos : []
+        //                 }
+
+        //                 let x = id + 1
+        //                 client.hmset(name, 'totalSub', x, "subtodo" + x, JSON.stringify(obj))
+
+        //             } else {
+        //                 let obj = {
+        //                     subTodoId: 0,
+        //                     subTodo: body.subTodo,
+        //                     new: "yes"
+        //                 }
+
+        //                 client.hmset(name, 'totalSub', 0, "subtodo" + 0, JSON.stringify(obj))
+        //             }
+        //         }
+        //     });
+        // }
     });
 
     res.send("DATA SAVED")
