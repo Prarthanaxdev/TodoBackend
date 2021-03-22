@@ -40,9 +40,49 @@ app.post('/setData', function (req, res) {
             let uid = doc.data().userId
 
             name = 'todo-' + i
-
-            console.log("SETTING DATA", name)
             client.hmset(name, "id", id, "name", title, "uid", uid,"subtodos",JSON.stringify([]))
+        })
+
+        querySnapshot.docs.map((doc) => {
+            let j = 0
+            firestore.collection("subTodos").where('todoId', '==', doc.id).onSnapshot(function (querySnapshot) {
+                querySnapshot.docs.map((doc1, i) => {
+                    let todoId = doc1.data().todoId
+                    let subTodoId = doc1.id
+                    let subTodo = doc1.data().todo
+
+                    client.keys("*", function (err, keys) {
+                        if (err) {
+                            return callback(err);
+                        }
+
+                        var len = keys.length
+
+                        for (var i = 0; i < len; i++) {
+                            let name = keys[i]
+
+                            client.hgetall(keys[i], function (err, object) {
+                                let subTodo = {}
+                                if (object.id == todoId) {
+                                    let obj = {
+                                        id: doc1.id,
+                                        name: doc1.data().todo,
+                                        new: "No",
+                                        deleted: 'No',
+                                        updated: 'No',
+                                        sub: 0,
+                                        subtodos: []
+                                    }
+
+                                    client.hmset(name, 'totalSub', j, "subtodo" + j, JSON.stringify(obj))
+                                    j++;
+                                }
+                            });
+                        }
+                    });
+                })
+
+            })
         })
     })
 
@@ -73,20 +113,25 @@ app.get('/getData/:id', function (req, res) {
         }
 
         let j = 0
+
+        console.log("*********", keys)
         for (var i = 0, len = keys.length; i < len; i++) {
             client.hgetall(keys[i], function (err, object) {
-                let obj = {
-                    id: object.id,
-                    name: object.name,
-                    subtodos: JSON.parse(object.subtodos),
+                if (object.deleted != 'true') {
+                    let obj = {
+                        id: object.id,
+                        name: object.name,
+                        subtodos: JSON.parse(object.subtodos),
+                    }
+
+                    arr.push(obj)
                 }
-                arr.push(obj)
             });
         }
 
         setTimeout(() => {
             res.send(arr)
-        }, 2000);
+        }, 1000);
     });
 })
 
@@ -98,9 +143,10 @@ app.post('/addNewTodo', function (req, res) {
             return callback(err);
         }
 
-        let length = keys.length+1
-        let name='todo-'+length
-        client.hmset(name,"name",body.title, "uid",body.userId,"subtodos",JSON.stringify([]),redis.print)
+        let name = 'todo-' + keys.length
+
+        console.log("HHHHHH", name)
+        client.hmset(name, "name", body.title, "new", "yes", "id", keys.length, "uid", body.userId,"subtodos",JSON.stringify([]))
     });
 
     res.send("DATA SAVED")
@@ -124,7 +170,6 @@ app.post('/addNewSubTodo', function (req, res) {
     res.send("DATA SAVED")
 })
 
-
 app.post('/deleteTodo', function (req, res) {
     let body = req.body
 
@@ -133,19 +178,31 @@ app.post('/deleteTodo', function (req, res) {
             return callback(err);
         }
 
-        for (var i = 0, len = keys.length; i < len; i++) {
-            keys.map((ob, i) => {
-                client.hgetall(ob, function (err, object) {
-                    if (object.id == body.id) {
-                        if (object.id.toString().length > 1) {
-                            client.hmset(keys[i], "deleted", "true")
-                        } else {
-                            client.hdel(keys[i], "title", "uid", "id", "new")
-                        }
-                    }
-                });
-            })
+        let body1= body.data[0]
+
+        console.log("*****", body1.id)
+
+        for(let i=0;i<body.data.length;i++){
+            let name = 'todo-' + i
+            
+            client.hmset(name, "id",body1.id, "name", body1.name,"subtodos",JSON.stringify(body1.subtodos) )
         }
+
+        // console.log("HHHHHH", JSON.stringify(body.id).id)
+
+        // for (var i = 0, len = keys.length; i < len; i++) {
+        //     keys.map((ob, i) => {
+        //         client.hgetall(ob, function (err, object) {
+        //             if (object.id == body.id) {
+        //                 if (object.id.toString().length > 1) {
+        //                     client.hmset(keys[i], "deleted", "true")
+        //                 } else {
+        //                     client.hdel(keys[i], "name", "subtodos", "id","new")
+        //                 }
+        //             }
+        //         });
+        //     })
+        // }
     });
     res.send("DELETED")
 })
@@ -200,12 +257,12 @@ app.post('/updateTodo', function (req, res) {
             keys.map((ob, i) => {
                 client.hgetall(ob, function (err, object) {
                     if (object.id == body.id) {
-                        client.hdel(keys[i], "title")
+                        client.hdel(keys[i], "name")
                         if (object.id.toString().length > 1) {
-                            client.hmset(keys[i], "title", body.title, "updated", "yes")
+                            client.hmset(keys[i], "name", body.title, "updated", "yes")
                         }
                         else {
-                            client.hmset(keys[i], "title", body.title)
+                            client.hmset(keys[i], "name", body.title)
                         }
                     }
                 });
@@ -316,6 +373,97 @@ app.post('/updateSubsubTodo', function (req, res) {
     res.send("DATA SAVED")
 })
 
+app.post('/removeSession', function (req, res) {
+    client.keys("*", function (err, keys) {
+        if (err) {
+            return callback(err);
+        }
+
+        keys.map((ob, i) => {
+            client.hgetall(keys[i], function (err, object) {
+                client.hexists(keys[i], 'new', function (err, reply) {
+                    if (reply === 1) {
+                        firestore.collection("todos").add({
+                            title: object.title,
+                            userId: object.uid
+                        })
+                            .then(function (docRef) {
+                                client.hdel(keys[i], "id")
+                                client.hmset(keys[i], "new", "No", "id", docRef.id)
+                            })
+                    }
+                });
+
+                client.hexists(keys[i], 'updated', function (err, reply) {
+                    if (reply === 1) {
+                        firestore.collection("todos").doc(object.id).update({
+                            title: object.title
+                        });
+                    } else {
+                    }
+                });
+
+                client.hexists(keys[i], 'deleted', function (err, reply) {
+                    if (reply === 1) {
+
+                        firestore.collection("todos").doc(object.id).delete();
+                    } else {
+                    }
+                });
+            })
+        })
+    });
+
+    setTimeout(() => {
+        client.keys("*", function (err, keys) {
+            if (err) {
+                return callback(err);
+            }
+
+            keys.map((ob, i) => {
+                client.hgetall(keys[i], function (err, object) {
+                    for (let i = 0; i <= object.totalSub; i++) {
+                        let name = "subtodo" + i
+
+                        client.hget(ob, name, function (err, object1) {
+                            let parse = JSON.parse(object1)
+                            if (parse != null) {
+                                if (parse.new == 'yes') {
+                                    let val = parse.totalSub - 1
+                                    client.hdel(ob, "totalSub")
+                                    client.hmset(ob, "totalSub", val)
+
+                                    firestore.collection("subTodos").add({
+                                        todo: parse.subTodo,
+                                        todoId: object.id
+                                    })
+                                }
+
+                                if (parse.updated == 'yes') {
+                                    firestore.collection("subTodos").doc(parse.subTodoId).update({
+                                        todo: parse.subTodo
+                                    });
+                                }
+
+                                if (parse.deleted == 'yes') {
+                                    if (parse.subTodoId.toString().length > 1) {
+                                        firestore.collection("subTodos").doc(parse.subTodoId).delete();
+                                    }
+                                }
+                            }
+                        })
+                    }
+                })
+            })
+        });
+    }, 1000)
+
+    setTimeout(() => {
+        client.flushall(function (err, succeeded) {
+            console.log("MESSAGE", succeeded);
+        });
+    }, 3000)
+})
 
 app.listen(5000, () => {
     console.log(`App listening on port ${PORT}`)
