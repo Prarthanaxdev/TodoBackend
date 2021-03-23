@@ -1,9 +1,9 @@
-
 const express = require('express')
-const app = express()
 const redis = require('redis')
 const bodyParser = require('body-parser');
 const db = require('./config/firestore');
+
+const app = express()
 const firestore = db.firestore()
 const PORT = 5000;
 const REDIS_PORT = 6379;
@@ -13,6 +13,10 @@ const client = redis.createClient(REDIS_PORT);
 client.on("connect", function (error) {
     console.log("REDIS CONNECTION ESTABLISHED")
 })
+
+client.on('error', function(err) {
+    console.log('Redis error: ' + err);
+});
 
 app.use(bodyParser.json());
 
@@ -100,15 +104,13 @@ app.get('/getData/:id', function (req, res) {
 
         for (var i = 0, len = keys.length; i < len; i++) {
             client.hgetall(keys[i], function (err, object) {
-                if (object.deleted != 'true') {
-                    let obj = {
-                        id: object.id,
-                        name: object.name,
-                        subtodos: JSON.parse(object.subtodos),
-                    }
-
-                    arr.push(obj)
+                let obj = {
+                    id: object.id,
+                    name: object.name,
+                    subtodos: JSON.parse(object.subtodos),
                 }
+
+                arr.push(obj)
             });
         }
 
@@ -162,7 +164,7 @@ app.post('/updateTodo', function (req, res) {
 
         for(let i=0;i<body.data.length;i++){
             let name = 'todo-' + i
-                        
+
             client.hmset(name, "id",body.data[i].id, "name", body.data[i].name,"subtodos",JSON.stringify(body.data[i].subtodos) )
         }
     });
@@ -195,138 +197,7 @@ app.post('/deleteTodo', function (req, res) {
     res.send("DELETED")
 })
 
-app.post('/deleteSubTodo', function (req, res) {
-    let body = req.body
-
-    client.keys("*", function (err, keys) {
-        if (err) {
-            return callback(err);
-        }
-
-        for (var i = 0, len = keys.length; i < len; i++) {
-            keys.map((ob, i) => {
-                client.hgetall(ob, function (err, object) {
-                    if (object.id == body.todoId) {
-                        for (let i = 0; i <= object.totalSub; i++) {
-                            let name = "subtodo" + i
-
-                            client.hget(ob, name, function (err, object1) {
-                                let parse = JSON.parse(object1)
-                                if (parse.subTodoId == body.subTodoId) {
-                                    let val = object.totalSub - 1
-                                    let obj = {
-                                        subTodoId: body.subTodoId,
-                                        deleted: "yes",
-                                        new: 'No',
-                                        updated: 'No'
-                                    }
-
-                                    client.hmset(ob, name, JSON.stringify(obj))
-                                }
-                            })
-                        }
-                    }
-                });
-            })
-        }
-    });
-
-    res.send("DELETED")
-})
-
-/* Pushes the data from cache to firestore */
-app.post('/removeSession', function (req, res) {
-    client.keys("*", function (err, keys) {
-        if (err) {
-            return callback(err);
-        }
-
-        keys.map((ob, i) => {
-            client.hgetall(keys[i], function (err, object) {
-                client.hexists(keys[i], 'new', function (err, reply) {
-                    if (reply === 1) {
-                        firestore.collection("todos").add({
-                            title: object.title,
-                            userId: object.uid
-                        })
-                            .then(function (docRef) {
-                                client.hdel(keys[i], "id")
-                                client.hmset(keys[i], "new", "No", "id", docRef.id)
-                            })
-                    }
-                });
-
-                client.hexists(keys[i], 'updated', function (err, reply) {
-                    if (reply === 1) {
-                        firestore.collection("todos").doc(object.id).update({
-                            title: object.title
-                        });
-                    } else {
-                    }
-                });
-
-                client.hexists(keys[i], 'deleted', function (err, reply) {
-                    if (reply === 1) {
-
-                        firestore.collection("todos").doc(object.id).delete();
-                    } else {
-                    }
-                });
-            })
-        })
-    });
-
-    setTimeout(() => {
-        client.keys("*", function (err, keys) {
-            if (err) {
-                return callback(err);
-            }
-
-            keys.map((ob, i) => {
-                client.hgetall(keys[i], function (err, object) {
-                    for (let i = 0; i <= object.totalSub; i++) {
-                        let name = "subtodo" + i
-
-                        client.hget(ob, name, function (err, object1) {
-                            let parse = JSON.parse(object1)
-                            if (parse != null) {
-                                if (parse.new == 'yes') {
-                                    let val = parse.totalSub - 1
-                                    client.hdel(ob, "totalSub")
-                                    client.hmset(ob, "totalSub", val)
-
-                                    firestore.collection("subTodos").add({
-                                        todo: parse.subTodo,
-                                        todoId: object.id
-                                    })
-                                }
-
-                                if (parse.updated == 'yes') {
-                                    firestore.collection("subTodos").doc(parse.subTodoId).update({
-                                        todo: parse.subTodo
-                                    });
-                                }
-
-                                if (parse.deleted == 'yes') {
-                                    if (parse.subTodoId.toString().length > 1) {
-                                        firestore.collection("subTodos").doc(parse.subTodoId).delete();
-                                    }
-                                }
-                            }
-                        })
-                    }
-                })
-            })
-        });
-    }, 1000)
-
-    setTimeout(() => {
-        client.flushall(function (err, succeeded) {
-            console.log("MESSAGE", succeeded);
-        });
-    }, 3000)
-})
-
 app.listen(5000, () => {
     console.log(`App listening on port ${PORT}`)
 })
+
