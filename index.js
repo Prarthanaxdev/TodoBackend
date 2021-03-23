@@ -90,22 +90,6 @@ app.post('/setData', function (req, res) {
     res.send("DATA SAVED")
 })
 
-app.post('/setSubtodo', function (req, res) {
-    let body = req.body
-
-    body.items.map((ob, i) => {
-        let todoId = ob.id
-        let subTodoId = ob.subTodoId
-        let subTodo = ob.subTodo
-
-        let name = 'Subtodo-' + i
-
-        client.hmset(name, "id", todoId, "subTodo", subTodo, "subTodoId", subTodoId)
-    })
-
-    res.send("DATA SAVED")
-})
-
 /* Fetches the data from cache */
 app.get('/getData/:id', function (req, res) {
     var arr = []
@@ -165,6 +149,23 @@ app.post('/addNewSubTodo', function (req, res) {
         }
     });
 
+    res.send("DATA SAVED")
+})
+
+app.post('/updateTodo', function (req, res) {
+    let body = req.body
+
+    client.keys("*", function (err, keys) {
+        if (err) {
+            return callback(err);
+        }
+
+        for(let i=0;i<body.data.length;i++){
+            let name = 'todo-' + i
+                        
+            client.hmset(name, "id",body.data[i].id, "name", body.data[i].name,"subtodos",JSON.stringify(body.data[i].subtodos) )
+        }
+    });
     res.send("DATA SAVED")
 })
 
@@ -231,134 +232,6 @@ app.post('/deleteSubTodo', function (req, res) {
     });
 
     res.send("DELETED")
-})
-
-app.post('/updateTodo', function (req, res) {
-    let body = req.body
-
-    client.keys("*", function (err, keys) {
-        if (err) {
-            return callback(err);
-        }
-
-        for (var i = 0, len = keys.length; i < len; i++) {
-            keys.map((ob, i) => {
-                client.hgetall(ob, function (err, object) {
-                    if (object.id == body.id) {
-                        client.hdel(keys[i], "name")
-                        if (object.id.toString().length > 1) {
-                            client.hmset(keys[i], "name", body.title, "updated", "yes")
-                        }
-                        else {
-                            client.hmset(keys[i], "name", body.title)
-                        }
-                    }
-                });
-            })
-        }
-    });
-    res.send("DATA SAVED")
-})
-
-app.post('/updateSubTodo', function (req, res) {
-    let body = req.body
-
-    client.keys("*", function (err, keys) {
-        if (err) {
-            return callback(err);
-        }
-
-        for (var i = 0, len = keys.length; i < len; i++) {
-            keys.map((ob, i) => {
-                client.hgetall(ob, function (err, object) {
-                    if (object.id == body.todoId) {
-                        for (let i = 0; i <= object.totalSub; i++) {
-                            let name = "subtodo" + i
-                            client.hget(ob, name, function (err, object1) {
-                                let parse = JSON.parse(object1)
-
-                                if (parse.subTodoId == body.id) {
-                                    if (parse.subTodoId.toString().length > 1) {
-                                        let obj = {
-                                            subTodo: body.title,
-                                            subTodoId: body.id,
-                                            new: "NO",
-                                            updated: "yes",
-                                            deleted: "NO"
-                                        }
-
-                                        client.hmset(ob, name, JSON.stringify(obj))
-                                    } else {
-                                        let obj = {
-                                            subTodo: body.title,
-                                            subTodoId: body.id,
-                                            new: "yes",
-                                            updated: "No",
-                                            deleted: "NO"
-                                        }
-                                        client.hmset(ob, name, JSON.stringify(obj))
-                                    }
-                                }
-                            })
-                        }
-                    }
-                });
-            })
-        }
-    });
-
-    res.send("DATA SAVED")
-})
-
-app.post('/updateSubsubTodo', function (req, res) {
-    let body = req.body
-
-    client.keys("*", function (err, keys) {
-        if (err) {
-            return callback(err);
-        }
-
-        for (var i = 0, len = keys.length; i < len; i++) {
-            keys.map((ob, i) => {
-                client.hgetall(ob, function (err, object) {
-
-                    if (object.id == body.todoId) {
-
-                        for (let i = 0; i <= object.totalSub; i++) {
-                            let name = "subtodo" + i
-                            client.hget(ob, name, function (err, object1) {
-                                let parse = JSON.parse(object1)
-                                let subs = {}
-                                if (parse.subTodoId == body.subTodoId) {
-                                    for (let i = 1; i <= parse.sub; i++) {
-                                        let name = "sub" + i
-
-                                        if (parse.subsubTodo[name].id == body.id) {
-                                            subs[name] = { subTodoId: parse.subsubTodo[name].subTodoId, name: body.title, id: parse.subsubTodo[name].id, "DELETED": parse.subsubTodo[name].DELETED }
-                                        }
-                                    }
-
-                                    let obj = {
-                                        subTodo: parse.subTodo,
-                                        subTodoId: parse.subTodoId,
-                                        new: parse.new,
-                                        updated: parse.updated,
-                                        deleted: parse.deleted,
-                                        sub: parse.sub,
-                                        subsubTodo: subs
-                                    }
-
-                                    client.hmset(ob, name, JSON.stringify(obj))
-                                }
-                            })
-                        }
-                    }
-                });
-            })
-        }
-    });
-
-    res.send("DATA SAVED")
 })
 
 /* Pushes the data from cache to firestore */
@@ -457,4 +330,3 @@ app.post('/removeSession', function (req, res) {
 app.listen(5000, () => {
     console.log(`App listening on port ${PORT}`)
 })
-
