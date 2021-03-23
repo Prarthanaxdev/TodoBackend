@@ -29,6 +29,7 @@ app.post('/addUser', function (req, res) {
     client.set("uid", id)
 })
 
+/* Fetches the data from firestore and store it in the cache */
 app.post('/setData', function (req, res) {
     let body = req.body
 
@@ -105,6 +106,7 @@ app.post('/setSubtodo', function (req, res) {
     res.send("DATA SAVED")
 })
 
+/* Fetches the data from cache */
 app.get('/getData/:id', function (req, res) {
     var arr = []
     client.keys("*", function (err, keys) {
@@ -112,9 +114,6 @@ app.get('/getData/:id', function (req, res) {
             return callback(err);
         }
 
-        let j = 0
-
-        console.log("*********", keys)
         for (var i = 0, len = keys.length; i < len; i++) {
             client.hgetall(keys[i], function (err, object) {
                 if (object.deleted != 'true') {
@@ -145,7 +144,6 @@ app.post('/addNewTodo', function (req, res) {
 
         let name = 'todo-' + keys.length
 
-        console.log("HHHHHH", name)
         client.hmset(name, "name", body.title, "new", "yes", "id", keys.length, "uid", body.userId,"subtodos",JSON.stringify([]))
     });
 
@@ -178,32 +176,21 @@ app.post('/deleteTodo', function (req, res) {
             return callback(err);
         }
 
-        let body1= body.data[0]
-
-        console.log("*****", body1.id)
-
-        for(let i=0;i<body.data.length;i++){
-            let name = 'todo-' + i
-            
-            client.hmset(name, "id",body1.id, "name", body1.name,"subtodos",JSON.stringify(body1.subtodos) )
+        for (var i = 0, len = keys.length; i < len; i++) {
+            keys.map((ob, i) => {
+                client.hgetall(ob, function (err, object) {
+                    if (object.id == body.id) {
+                        if (object.id.toString().length > 1) {
+                            client.hmset(keys[i], "deleted", "true")
+                        } else {
+                            client.hdel(keys[i], "name", "subtodos", "id","new","uid")
+                        }
+                    }
+                });
+            })
         }
-
-        // console.log("HHHHHH", JSON.stringify(body.id).id)
-
-        // for (var i = 0, len = keys.length; i < len; i++) {
-        //     keys.map((ob, i) => {
-        //         client.hgetall(ob, function (err, object) {
-        //             if (object.id == body.id) {
-        //                 if (object.id.toString().length > 1) {
-        //                     client.hmset(keys[i], "deleted", "true")
-        //                 } else {
-        //                     client.hdel(keys[i], "name", "subtodos", "id","new")
-        //                 }
-        //             }
-        //         });
-        //     })
-        // }
     });
+
     res.send("DELETED")
 })
 
@@ -242,6 +229,7 @@ app.post('/deleteSubTodo', function (req, res) {
             })
         }
     });
+
     res.send("DELETED")
 })
 
@@ -373,6 +361,7 @@ app.post('/updateSubsubTodo', function (req, res) {
     res.send("DATA SAVED")
 })
 
+/* Pushes the data from cache to firestore */
 app.post('/removeSession', function (req, res) {
     client.keys("*", function (err, keys) {
         if (err) {
