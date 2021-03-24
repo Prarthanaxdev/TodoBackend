@@ -138,12 +138,6 @@ router.post('/removeSession', function (req, res) {
             })
         })
     });
-
-    setTimeout(() => {
-        client.flushall(function (err, succeeded) {
-            console.log("MESSAGE", succeeded);
-        });
-    }, 3000)
 })
 
 module.exports = router
